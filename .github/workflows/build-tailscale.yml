@@ -7,16 +7,22 @@ on:
 
 jobs:
   build-and-release:
-    runs-on: macos-latest  # 使用最新的 macOS 环境（支持 ARM）
+    runs-on: ubuntu-latest  # 使用 Ubuntu 环境
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+
+      # 安装 jq
+      - name: Install jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
 
       # 获取最新 Tailscale 版本号
       - name: Get latest Tailscale version
         id: get_latest_version
         run: |
-          LATEST_VERSION=$(curl -s https://api.github.com/repos/tailscale/tailscale/releases/latest | grep -oP '"tag_name": "\K(.*)(?=")')
+          LATEST_VERSION=$(curl -s https://api.github.com/repos/tailscale/tailscale/releases/latest | jq -r '.tag_name')
           echo "Latest Tailscale version: $LATEST_VERSION"
           echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
 
@@ -26,7 +32,7 @@ jobs:
         run: |
           RESPONSE=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest)
           if echo "$RESPONSE" | grep -q '"tag_name":'; then
-            CURRENT_VERSION=$(echo "$RESPONSE" | grep -oP '"tag_name": "\K(.*)(?=")')
+            CURRENT_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name')
           else
             CURRENT_VERSION="0.0.0"  # 如果没有 Releases，默认使用 0.0.0
           fi
