@@ -99,7 +99,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用自定义的 GH_TOKEN
         with:
           tag_name: ${{ steps.get_latest_version.outputs.latest_version }}
-          release_name: Tailscale ${{ steps.get_latest_version.outputs.latest_version }}
+          release_name: ${{ steps.get_latest_version.outputs.latest_version }}
           body: |
             Tailscale binaries built for macOS ARM.
             Version: ${{ steps.get_latest_version.outputs.latest_version }}
