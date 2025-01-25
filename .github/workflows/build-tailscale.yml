@@ -96,7 +96,7 @@ jobs:
         id: create_release
         uses: actions/create-release@v1
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用自定义的 GH_TOKEN
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用自定义的 GH_TOKEN
         with:
           tag_name: ${{ steps.get_latest_version.outputs.latest_version }}
           release_name: Tailscale ${{ steps.get_latest_version.outputs.latest_version }}
@@ -111,7 +111,7 @@ jobs:
         if: steps.compare_versions.outputs.should_build == 'true'
         uses: actions/upload-release-asset@v1
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用自定义的 GH_TOKEN
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用自定义的 GH_TOKEN
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./dist/tailscale
@@ -122,7 +122,7 @@ jobs:
         if: steps.compare_versions.outputs.should_build == 'true'
         uses: actions/upload-release-asset@v1
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用自定义的 GH_TOKEN
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用自定义的 GH_TOKEN
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./dist/tailscaled
