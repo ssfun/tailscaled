@@ -1,80 +1,88 @@
 name: Build and Release Tailscale
 
 on:
-  workflow_dispatch:  # 支持手动触发
+  workflow_dispatch:  # 手动触发
   schedule:
-    - cron: '0 1 * * *'  # 每天 UTC 1:00 (北京时间 10:00)
+    - cron: '0 1 * * *'  # Asia/Shanghai 时间10点（UTC 时间1:00）
 
 jobs:
   build-and-release:
-    runs-on: macos-latest  # 使用 macOS 环境编译
+    runs-on: ubuntu-latest  # 使用 Ubuntu 环境
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 安装 jq 用于解析 JSON
+      # 安装 jq
       - name: Install jq
-        run: brew install jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
 
-      # 获取 Tailscale 最新版本号
+      # 获取最新 Tailscale 版本号
       - name: Get latest Tailscale version
         id: get_latest_version
         run: |
-          LATEST_VERSION=$(curl -s https://api.github.com/repos/tailscale/tailscale/releases/latest | jq -r .tag_name)
-          echo "Latest version: $LATEST_VERSION"
+          LATEST_VERSION=$(curl -s https://api.github.com/repos/tailscale/tailscale/releases/latest | jq -r '.tag_name')
+          echo "Latest Tailscale version: $LATEST_VERSION"
           echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
 
-      # 获取当前项目的最新 Release 版本号
-      - name: Get current release version
+      # 获取当前项目的 Releases 版本号
+      - name: Get current project release version
         id: get_current_version
         run: |
           RESPONSE=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest)
           if echo "$RESPONSE" | grep -q '"tag_name":'; then
-            CURRENT_VERSION=$(echo "$RESPONSE" | jq -r .tag_name)
+            CURRENT_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name')
           else
-            CURRENT_VERSION="v0.0.0"  # 默认版本号
+            CURRENT_VERSION="0.0.0"  # 如果没有 Releases，默认使用 0.0.0
           fi
-          echo "Current version: $CURRENT_VERSION"
+          echo "Current project release version: $CURRENT_VERSION"
           echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
-      # 版本号比较逻辑
+      # 比较版本号，决定是否需要构建
       - name: Compare versions
         id: compare_versions
         run: |
-          LATEST_NUM=$(echo "${{ steps.get_latest_version.outputs.latest_version }}" | sed 's/^v//')
-          CURRENT_NUM=$(echo "${{ steps.get_current_version.outputs.current_version }}" | sed 's/^v//')
-          
-          HIGHER_VERSION=$(echo -e "$LATEST_NUM\n$CURRENT_NUM" | sort -V | tail -n1)
-          
-          if [[ "$HIGHER_VERSION" == "$LATEST_NUM" && "$LATEST_NUM" != "$CURRENT_NUM" ]]; then
-            echo "::set-output name=should_build::true"
+          LATEST_VERSION="${{ steps.get_latest_version.outputs.latest_version }}"
+          CURRENT_VERSION="${{ steps.get_current_version.outputs.current_version }}"
+          echo "Latest version from outputs: $LATEST_VERSION"
+          echo "Current version from outputs: $CURRENT_VERSION"
+
+          # 去掉版本号中的 "v" 前缀
+          LATEST_VERSION_NUM=$(echo "$LATEST_VERSION" | sed 's/^v//')
+          CURRENT_VERSION_NUM=$(echo "$CURRENT_VERSION" | sed 's/^v//')
+
+          # 使用 sort -V 比较版本号
+          HIGHER_VERSION=$(echo -e "$LATEST_VERSION_NUM\n$CURRENT_VERSION_NUM" | sort -V | tail -n 1)
+
+          if [[ "$HIGHER_VERSION" == "$LATEST_VERSION_NUM" && "$LATEST_VERSION_NUM" != "$CURRENT_VERSION_NUM" ]]; then
+            echo "New version available, continuing..."
+            echo "should_build=true" >> $GITHUB_OUTPUT
           else
-            echo "::set-output name=should_build::false"
+            echo "No new version available, stopping..."
+            echo "should_build=false" >> $GITHUB_OUTPUT
           fi
 
-      # 设置 Go 环境
+      # 如果检测到新版本，继续构建
       - name: Set up Go
         if: steps.compare_versions.outputs.should_build == 'true'
         uses: actions/setup-go@v4
         with:
-          go-version: '1.21'
+          go-version: '1.21'  # 使用 Go 1.21
 
-      # 编译 Tailscale 二进制
       - name: Compile Tailscale
         if: steps.compare_versions.outputs.should_build == 'true'
         run: |
-          VERSION=${{ steps.get_latest_version.outputs.latest_version }}
-          echo "Building version: $VERSION"
-          
-          # 编译命令
-          go install "tailscale.com/cmd/tailscale@$VERSION"
-          go install "tailscale.com/cmd/tailscaled@$VERSION"
-          
-          # 整理输出文件
+          LATEST_VERSION=${{ steps.get_latest_version.outputs.latest_version }}
+          if [ -z "$LATEST_VERSION" ]; then
+            echo "Error: LATEST_VERSION is empty!"
+            exit 1
+          fi
+          echo "Building Tailscale version: $LATEST_VERSION"
+          go install tailscale.com/cmd/tailscale{,d}@$LATEST_VERSION
           mkdir -p dist
           cp $HOME/go/bin/tailscale $HOME/go/bin/tailscaled dist/
 
-      # 上传编译产物
       - name: Upload artifacts
         if: steps.compare_versions.outputs.should_build == 'true'
         uses: actions/upload-artifact@v3
@@ -83,65 +91,67 @@ jobs:
           path: dist/
 
       # 创建 GitHub Release
-      - name: Create Release
+      - name: Create GitHub Release
         if: steps.compare_versions.outputs.should_build == 'true'
         id: create_release
         uses: actions/create-release@v1
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用自定义的 GH_TOKEN
         with:
-          token: ${{ secrets.GH_TOKEN }}
           tag_name: ${{ steps.get_latest_version.outputs.latest_version }}
-          release_name: "Tailscale ${{ steps.get_latest_version.outputs.latest_version }}"
+          release_name: Tailscale ${{ steps.get_latest_version.outputs.latest_version }}
           body: |
-            Precompiled Tailscale binaries for macOS ARM
+            Tailscale binaries built for macOS ARM.
             Version: ${{ steps.get_latest_version.outputs.latest_version }}
           draft: false
           prerelease: false
 
-      # 上传 Release 文件
+      # 上传 Release 附件
       - name: Upload Release Assets
         if: steps.compare_versions.outputs.should_build == 'true'
         uses: actions/upload-release-asset@v1
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用自定义的 GH_TOKEN
         with:
-          token: ${{ secrets.GH_TOKEN }}
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./dist/tailscale
           asset_name: tailscale
           asset_content_type: application/octet-stream
 
-      - name: Upload tailscaled Asset
+      - name: Upload Release Assets (tailscaled)
         if: steps.compare_versions.outputs.should_build == 'true'
         uses: actions/upload-release-asset@v1
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用自定义的 GH_TOKEN
         with:
-          token: ${{ secrets.GH_TOKEN }}
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./dist/tailscaled
           asset_name: tailscaled
           asset_content_type: application/octet-stream
 
       # 发送 Telegram 通知
-      - name: Notify Telegram
+      - name: Send Telegram notification
         if: steps.compare_versions.outputs.should_build == 'true'
         run: |
-          MESSAGE="🚀 New Tailscale Release: ${{ steps.get_latest_version.outputs.latest_version }}%0A"
-          MESSAGE+="📅 Released at: $(date -u '+%Y-%m-%d %H:%M UTC')%0A"
-          MESSAGE+="🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_latest_version.outputs.latest_version }}"
-          
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+          MESSAGE="New Tailscale release! 🚀%0A%0A"
+          MESSAGE+="Version: ${{ steps.get_latest_version.outputs.latest_version }}%0A"
+          MESSAGE+="Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_latest_version.outputs.latest_version }}"
+          curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
+            -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
             -d text="$MESSAGE"
 
-  # 清理历史运行记录
+  # 清理旧的运行日志
   cleanup-runs:
     runs-on: ubuntu-latest
-    needs: build-and-release
+    needs: build-and-release  # 确保在 build-and-release 任务完成后执行
     permissions:
-      actions: write
-      contents: read
+      actions: write  # 需要 write 权限来删除运行日志
+      contents: read  # 需要 read 权限来访问仓库信息
     steps:
-      - name: Purge old runs
+      - name: Delete old workflow runs
         uses: Mattraks/delete-workflow-runs@v2
         with:
-          token: ${{ secrets.GH_TOKEN }}
-          repository: ${{ github.repository }}
-          retain_days: 3
-          keep_minimum_runs: 5
+          token: ${{ secrets.GH_TOKEN }}  # 使用自定义的 GH_TOKEN
+          repository: ${{ github.repository }}  # 当前仓库
+          retain_days: 7  # 保留最近 7 天的运行日志
+          keep_minimum_runs: 6  # 至少保留 6 条运行日志
