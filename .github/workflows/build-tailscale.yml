@@ -11,11 +11,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
       # 安装 jq 用于解析 JSON
       - name: Install jq
         run: brew install jq
-
       # 获取 Tailscale 最新版本号
       - name: Get latest Tailscale version
         id: get_latest_version
@@ -23,7 +21,6 @@ jobs:
           LATEST_VERSION=$(curl -s https://api.github.com/repos/tailscale/tailscale/releases/latest | jq -r .tag_name)
           echo "Latest version: $LATEST_VERSION"
           echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
-
       # 获取当前项目的最新 Release 版本号
       - name: Get current release version
         id: get_current_version
@@ -36,44 +33,36 @@ jobs:
           fi
           echo "Current version: $CURRENT_VERSION"
           echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-
       # 版本号比较逻辑
       - name: Compare versions
         id: compare_versions
         run: |
           LATEST_NUM=$(echo "${{ steps.get_latest_version.outputs.latest_version }}" | sed 's/^v//')
           CURRENT_NUM=$(echo "${{ steps.get_current_version.outputs.current_version }}" | sed 's/^v//')
-          
           HIGHER_VERSION=$(echo -e "$LATEST_NUM\n$CURRENT_NUM" | sort -V | tail -n1)
-          
           if [[ "$HIGHER_VERSION" == "$LATEST_NUM" && "$LATEST_NUM" != "$CURRENT_NUM" ]]; then
             echo "::set-output name=should_build::true"
           else
             echo "::set-output name=should_build::false"
           fi
-
       # 设置 Go 环境
       - name: Set up Go
         if: steps.compare_versions.outputs.should_build == 'true'
         uses: actions/setup-go@v4
         with:
           go-version: '1.21'
-
       # 编译 Tailscale 二进制
       - name: Compile Tailscale
         if: steps.compare_versions.outputs.should_build == 'true'
         run: |
           VERSION=${{ steps.get_latest_version.outputs.latest_version }}
           echo "Building version: $VERSION"
-          
           # 编译命令
           go install "tailscale.com/cmd/tailscale@$VERSION"
           go install "tailscale.com/cmd/tailscaled@$VERSION"
-          
           # 整理输出文件
           mkdir -p dist
           cp $HOME/go/bin/tailscale $HOME/go/bin/tailscaled dist/
-
       # 上传编译产物
       - name: Upload artifacts
         if: steps.compare_versions.outputs.should_build == 'true'
@@ -81,7 +70,6 @@ jobs:
         with:
           name: tailscale-binaries
           path: dist/
-
       # 创建 GitHub Release
       - name: Create Release
         if: steps.compare_versions.outputs.should_build == 'true'
@@ -96,7 +84,6 @@ jobs:
             Version: ${{ steps.get_latest_version.outputs.latest_version }}
           draft: false
           prerelease: false
-
       # 上传 Release 文件
       - name: Upload Release Assets
         if: steps.compare_versions.outputs.should_build == 'true'
@@ -107,7 +94,6 @@ jobs:
           asset_path: ./dist/tailscale
           asset_name: tailscale
           asset_content_type: application/octet-stream
-
       - name: Upload tailscaled Asset
         if: steps.compare_versions.outputs.should_build == 'true'
         uses: actions/upload-release-asset@v1
@@ -117,7 +103,6 @@ jobs:
           asset_path: ./dist/tailscaled
           asset_name: tailscaled
           asset_content_type: application/octet-stream
-
       # 发送 Telegram 通知
       - name: Notify Telegram
         if: steps.compare_versions.outputs.should_build == 'true'
@@ -125,11 +110,10 @@ jobs:
           MESSAGE="🚀 New Tailscale Release: ${{ steps.get_latest_version.outputs.latest_version }}%0A"
           MESSAGE+="📅 Released at: $(date -u '+%Y-%m-%d %H:%M UTC')%0A"
           MESSAGE+="🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_latest_version.outputs.latest_version }}"
-          
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
             -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
             -d text="$MESSAGE"
-
+ 
   # 清理历史运行记录
   cleanup-runs:
     runs-on: ubuntu-latest
