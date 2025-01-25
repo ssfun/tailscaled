@@ -1,4 +1,4 @@
-name: Build and Release Tailscale
+name: Build and Release Tailscale for macOS ARM
 
 on:
   workflow_dispatch:  # 手动触发
@@ -70,7 +70,7 @@ jobs:
         with:
           go-version: '1.21'  # 使用 Go 1.21
 
-      - name: Compile Tailscale
+      - name: Compile Tailscale for macOS ARM
         if: steps.compare_versions.outputs.should_build == 'true'
         run: |
           LATEST_VERSION=${{ steps.get_latest_version.outputs.latest_version }}
@@ -78,7 +78,9 @@ jobs:
             echo "Error: LATEST_VERSION is empty!"
             exit 1
           fi
-          echo "Building Tailscale version: $LATEST_VERSION"
+          echo "Building Tailscale version: $LATEST_VERSION for macOS ARM"
+          export GOOS=darwin
+          export GOARCH=arm64
           go install tailscale.com/cmd/tailscale{,d}@$LATEST_VERSION
           mkdir -p dist
           cp $HOME/go/bin/tailscale $HOME/go/bin/tailscaled dist/
@@ -87,7 +89,7 @@ jobs:
         if: steps.compare_versions.outputs.should_build == 'true'
         uses: actions/upload-artifact@v3
         with:
-          name: tailscale-binaries
+          name: tailscale-binaries-macos-arm
           path: dist/
 
       # 创建 GitHub Release
@@ -133,7 +135,7 @@ jobs:
       - name: Send Telegram notification
         if: steps.compare_versions.outputs.should_build == 'true'
         run: |
-          MESSAGE="New Tailscale release! 🚀%0A%0A"
+          MESSAGE="New Tailscale release for macOS ARM! 🚀%0A%0A"
           MESSAGE+="Version: ${{ steps.get_latest_version.outputs.latest_version }}%0A"
           MESSAGE+="Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_latest_version.outputs.latest_version }}"
           curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
