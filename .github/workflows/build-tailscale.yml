@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-and-release:
-    runs-on: ubuntu-latest  # 使用 Ubuntu 环境
+    runs-on: macos-latest  # 使用 macOS 环境
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -15,8 +15,7 @@ jobs:
       # 安装 jq
       - name: Install jq
         run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
+          brew install jq
 
       # 获取最新 Tailscale 版本号
       - name: Get latest Tailscale version
@@ -117,7 +116,7 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./dist/tailscale
-          asset_name: tailscale
+          asset_name: tailscale  # 保留原始文件名
           asset_content_type: application/octet-stream
 
       - name: Upload Release Assets (tailscaled)
@@ -128,7 +127,7 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./dist/tailscaled
-          asset_name: tailscaled
+          asset_name: tailscaled  # 保留原始文件名
           asset_content_type: application/octet-stream
 
       # 发送 Telegram 通知
