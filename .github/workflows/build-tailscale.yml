@@ -6,6 +6,8 @@ on:
 jobs:
   build-and-release:
     runs-on: macos-latest  # 使用 macOS 环境编译
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -81,8 +83,6 @@ jobs:
             Version: ${{ steps.get_latest_version.outputs.latest_version }}
           draft: false
           prerelease: false
-        permissions:
-          contents: write
       # 上传 Release 文件
       - name: Upload Release Assets
         if: steps.compare_versions.outputs.should_build == 'true'
