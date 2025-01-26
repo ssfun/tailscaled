@@ -12,12 +12,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      # 安装 jq
+      - name: Install jq
+        run: |
+          brew install jq
+
       # 获取最新 Tailscale 版本号
       - name: Get latest Tailscale version
         id: get_latest_version
         run: |
           RESPONSE=$(curl -s https://api.github.com/repos/tailscale/tailscale/releases/latest)
-          LATEST_VERSION=$(echo "$RESPONSE" | sed -n 's/.*"tag_name": "\([^"]*\)".*/\1/p')
+          LATEST_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name')
           if [ -z "$LATEST_VERSION" ]; then
             echo "Warning: Failed to get latest Tailscale version. Defaulting to no new version."
             LATEST_VERSION="0.0.0"  # 默认值，表示没有新版本
@@ -30,7 +35,7 @@ jobs:
         id: get_current_version
         run: |
           RESPONSE=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest)
-          CURRENT_VERSION=$(echo "$RESPONSE" | sed -n 's/.*"tag_name": "\([^"]*\)".*/\1/p')
+          CURRENT_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name')
           if [ -z "$CURRENT_VERSION" ]; then
             CURRENT_VERSION="0.0.0"  # 如果没有 Releases，默认使用 0.0.0
           fi
