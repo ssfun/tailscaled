@@ -12,75 +12,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 安装 jq
-      - name: Install jq
-        run: |
-          brew install jq
-
-      # 获取最新 Tailscale 版本号（带重试机制和 GitHub Token 认证）
+      # 获取最新 Tailscale 版本号
       - name: Get latest Tailscale version
         id: get_latest_version
         run: |
-          MAX_RETRIES=3  # 最大重试次数
-          RETRY_DELAY=5  # 每次重试之间的延迟（秒）
-
-          # 检查 jq 是否已安装
-          if ! command -v jq &> /dev/null; then
-            echo "Error: jq is not installed!"
-            exit 1
+          RESPONSE=$(curl -s https://api.github.com/repos/tailscale/tailscale/releases/latest)
+          LATEST_VERSION=$(echo "$RESPONSE" | grep -oP '"tag_name": "\K[^"]+')
+          if [ -z "$LATEST_VERSION" ]; then
+            echo "Warning: Failed to get latest Tailscale version. Defaulting to no new version."
+            LATEST_VERSION="0.0.0"  # 默认值，表示没有新版本
           fi
-
-          for i in $(seq 1 $MAX_RETRIES); do
-            echo "Attempt $i to fetch latest Tailscale version..."
-
-            # 使用 GitHub Token 进行认证
-            RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/tailscale/tailscale/releases/latest)
-            
-            # 打印完整的 API 响应（用于调试）
-            echo "API Response: $RESPONSE"
-
-            # 检查是否触发速率限制
-            RATE_LIMIT_REMAINING=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/rate_limit | jq -r '.resources.core.remaining')
-            if [ "$RATE_LIMIT_REMAINING" -eq 0 ]; then
-              echo "Error: GitHub API rate limit exceeded!"
-              exit 1
-            fi
-
-            # 检查响应是否包含 tag_name
-            if echo "$RESPONSE" | jq -e '.tag_name' > /dev/null 2>&1; then
-              # 提取版本号
-              LATEST_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name')
-              
-              # 检查版本号是否为空
-              if [ -n "$LATEST_VERSION" ] && [ "$LATEST_VERSION" != "null" ]; then
-                echo "Latest Tailscale version: $LATEST_VERSION"
-                echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
-                exit 0  # 成功获取版本号，退出脚本
-              else
-                echo "Error: Latest Tailscale version is null or empty!"
-              fi
-            else
-              echo "Error: Failed to fetch latest Tailscale version from GitHub API!"
-            fi
-
-            # 如果未达到最大重试次数，等待后重试
-            if [ $i -lt $MAX_RETRIES ]; then
-              echo "Retrying in $RETRY_DELAY seconds..."
-              sleep $RETRY_DELAY
-            fi
-          done
-
-          # 如果重试 3 次后仍然失败，退出并报错
-          echo "Error: Failed to fetch latest Tailscale version after $MAX_RETRIES attempts!"
-          exit 1
+          echo "Latest Tailscale version: $LATEST_VERSION"
+          echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
 
       # 获取当前项目的 Releases 版本号
       - name: Get current project release version
         id: get_current_version
         run: |
-          RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/${{ github.repository }}/releases/latest)
+          RESPONSE=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest)
           if echo "$RESPONSE" | grep -q '"tag_name":'; then
-            CURRENT_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name')
+            CURRENT_VERSION=$(echo "$RESPONSE" | grep -oP '"tag_name": "\K[^"]+')
           else
             CURRENT_VERSION="0.0.0"  # 如果没有 Releases，默认使用 0.0.0
           fi
@@ -146,7 +97,7 @@ jobs:
         id: create_release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用默认的 GITHUB_TOKEN
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用自定义的 GH_TOKEN
         with:
           tag_name: ${{ steps.get_latest_version.outputs.latest_version }}
           release_name: ${{ steps.get_latest_version.outputs.latest_version }}
@@ -161,22 +112,22 @@ jobs:
         if: steps.compare_versions.outputs.should_build == 'true'
         uses: actions/upload-release-asset@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用默认的 GITHUB_TOKEN
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用自定义的 GH_TOKEN
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./dist/tailscale
-          asset_name: tailscale
+          asset_name: tailscale  # 保留原始文件名
           asset_content_type: application/octet-stream
 
       - name: Upload Release Assets (tailscaled)
         if: steps.compare_versions.outputs.should_build == 'true'
         uses: actions/upload-release-asset@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用默认的 GITHUB_TOKEN
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用自定义的 GH_TOKEN
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./dist/tailscaled
-          asset_name: tailscaled
+          asset_name: tailscaled  # 保留原始文件名
           asset_content_type: application/octet-stream
 
       # 发送 Telegram 通知
@@ -201,7 +152,7 @@ jobs:
       - name: Delete old workflow runs
         uses: Mattraks/delete-workflow-runs@v2
         with:
-          token: ${{ secrets.GH_TOKEN }}  # 使用默认的 GITHUB_TOKEN
+          token: ${{ secrets.GH_TOKEN }}  # 使用自定义的 GH_TOKEN
           repository: ${{ github.repository }}  # 当前仓库
           retain_days: 7  # 保留最近 7 天的运行日志
           keep_minimum_runs: 6  # 至少保留 6 条运行日志
