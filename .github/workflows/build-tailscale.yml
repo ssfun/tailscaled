@@ -17,7 +17,7 @@ jobs:
         id: get_latest_version
         run: |
           RESPONSE=$(curl -s https://api.github.com/repos/tailscale/tailscale/releases/latest)
-          LATEST_VERSION=$(echo "$RESPONSE" | grep -oP '"tag_name": "\K[^"]+')
+          LATEST_VERSION=$(echo "$RESPONSE" | sed -n 's/.*"tag_name": "\([^"]*\)".*/\1/p')
           if [ -z "$LATEST_VERSION" ]; then
             echo "Warning: Failed to get latest Tailscale version. Defaulting to no new version."
             LATEST_VERSION="0.0.0"  # 默认值，表示没有新版本
@@ -30,9 +30,8 @@ jobs:
         id: get_current_version
         run: |
           RESPONSE=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest)
-          if echo "$RESPONSE" | grep -q '"tag_name":'; then
-            CURRENT_VERSION=$(echo "$RESPONSE" | grep -oP '"tag_name": "\K[^"]+')
-          else
+          CURRENT_VERSION=$(echo "$RESPONSE" | sed -n 's/.*"tag_name": "\([^"]*\)".*/\1/p')
+          if [ -z "$CURRENT_VERSION" ]; then
             CURRENT_VERSION="0.0.0"  # 如果没有 Releases，默认使用 0.0.0
           fi
           echo "Current project release version: $CURRENT_VERSION"
