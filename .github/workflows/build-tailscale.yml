@@ -11,37 +11,35 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
       # 安装 jq
       - name: Install jq
         run: |
           brew install jq
-
       # 获取最新 Tailscale 版本号
       - name: Get latest Tailscale version
         id: get_latest_version
         run: |
           RESPONSE=$(curl -s https://api.github.com/repos/tailscale/tailscale/releases/latest)
+          echo "Tailscale API Response: $RESPONSE" # Log the full response
           LATEST_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name')
-          if [ -z "$LATEST_VERSION" ]; then
-            echo "Warning: Failed to get latest Tailscale version. Defaulting to no new version."
+          if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" == "null" ]; then
+            echo "Warning: Failed to get latest Tailscale version or no releases found. Defaulting to no new version."
             LATEST_VERSION="0.0.0"  # 默认值，表示没有新版本
           fi
           echo "Latest Tailscale version: $LATEST_VERSION"
           echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
-
       # 获取当前项目的 Releases 版本号
       - name: Get current project release version
         id: get_current_version
         run: |
           RESPONSE=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest)
+          echo "Current repo API Response: $RESPONSE" # Log the full response
           CURRENT_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name')
-          if [ -z "$CURRENT_VERSION" ]; then
+          if [ -z "$CURRENT_VERSION" ] || [ "$CURRENT_VERSION" == "null" ]; then
             CURRENT_VERSION="0.0.0"  # 如果没有 Releases，默认使用 0.0.0
           fi
           echo "Current project release version: $CURRENT_VERSION"
           echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-
       # 比较版本号，决定是否需要构建
       - name: Compare versions
         id: compare_versions
@@ -50,14 +48,11 @@ jobs:
           CURRENT_VERSION="${{ steps.get_current_version.outputs.current_version }}"
           echo "Latest version from outputs: $LATEST_VERSION"
           echo "Current version from outputs: $CURRENT_VERSION"
-
           # 去掉版本号中的 "v" 前缀
           LATEST_VERSION_NUM=$(echo "$LATEST_VERSION" | sed 's/^v//')
           CURRENT_VERSION_NUM=$(echo "$CURRENT_VERSION" | sed 's/^v//')
-
           # 使用 sort -V 比较版本号
           HIGHER_VERSION=$(echo -e "$LATEST_VERSION_NUM\n$CURRENT_VERSION_NUM" | sort -V | tail -n 1)
-
           if [[ "$HIGHER_VERSION" == "$LATEST_VERSION_NUM" && "$LATEST_VERSION_NUM" != "$CURRENT_VERSION_NUM" ]]; then
             echo "New version available, continuing..."
             echo "should_build=true" >> $GITHUB_OUTPUT
@@ -65,14 +60,12 @@ jobs:
             echo "No new version available, stopping..."
             echo "should_build=false" >> $GITHUB_OUTPUT
           fi
-
       # 如果检测到新版本，继续构建
       - name: Set up Go
         if: steps.compare_versions.outputs.should_build == 'true'
         uses: actions/setup-go@v4
         with:
           go-version: '1.21'  # 使用 Go 1.21
-
       - name: Compile Tailscale for macOS ARM
         if: steps.compare_versions.outputs.should_build == 'true'
         run: |
@@ -87,14 +80,12 @@ jobs:
           go install tailscale.com/cmd/tailscale{,d}@$LATEST_VERSION
           mkdir -p dist
           cp $HOME/go/bin/tailscale $HOME/go/bin/tailscaled dist/
-
       - name: Upload artifacts
         if: steps.compare_versions.outputs.should_build == 'true'
         uses: actions/upload-artifact@v3
         with:
           name: tailscale-binaries-macos-arm
           path: dist/
-
       # 创建 GitHub Release
       - name: Create GitHub Release
         if: steps.compare_versions.outputs.should_build == 'true'
@@ -110,7 +101,6 @@ jobs:
             Version: ${{ steps.get_latest_version.outputs.latest_version }}
           draft: false
           prerelease: false
-
       # 上传 Release 附件
       - name: Upload Release Assets
         if: steps.compare_versions.outputs.should_build == 'true'
@@ -122,7 +112,6 @@ jobs:
           asset_path: ./dist/tailscale
           asset_name: tailscale  # 保留原始文件名
           asset_content_type: application/octet-stream
-
       - name: Upload Release Assets (tailscaled)
         if: steps.compare_versions.outputs.should_build == 'true'
         uses: actions/upload-release-asset@v1
@@ -133,7 +122,6 @@ jobs:
           asset_path: ./dist/tailscaled
           asset_name: tailscaled  # 保留原始文件名
           asset_content_type: application/octet-stream
-
       # 发送 Telegram 通知
       - name: Send Telegram notification
         if: steps.compare_versions.outputs.should_build == 'true'
