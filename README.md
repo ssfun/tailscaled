@@ -2,7 +2,7 @@
 
 ## 项目说明
 
-本项目旨在解决在部分场景下，需要通过代理访问 Tailscale 登录接口的问题。由于 macOS 下的 Tailscale GUI 版本无法配置代理，因此我们提供了自动编译的 macOS ARM 最新版本的 Tailscale No-GUI 版本。
+本项目旨在解决在部分场景下，需要通过代理访问 Tailscale 登录接口的问题。由于 macOS 下的 Tailscale GUI 版本无法配置代理，因此编译了 macOS ARM 版本的 Tailscale No-GUI 版本。
 
 默认代理配置如下：
 - `HTTP_PROXY=http://127.0.0.1:6152`
