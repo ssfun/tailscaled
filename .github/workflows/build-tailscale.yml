@@ -17,13 +17,46 @@ jobs:
         run: |
           brew install jq
 
-      # 获取最新 Tailscale 版本号
+      # 获取最新 Tailscale 版本号（带重试机制）
       - name: Get latest Tailscale version
         id: get_latest_version
         run: |
-          LATEST_VERSION=$(curl -s https://api.github.com/repos/tailscale/tailscale/releases/latest | jq -r '.tag_name')
-          echo "Latest Tailscale version: $LATEST_VERSION"
-          echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          MAX_RETRIES=3  # 最大重试次数
+          RETRY_DELAY=5  # 每次重试之间的延迟（秒）
+
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Attempt $i to fetch latest Tailscale version..."
+
+            # 获取 GitHub API 响应
+            RESPONSE=$(curl -s https://api.github.com/repos/tailscale/tailscale/releases/latest)
+            
+            # 检查响应是否包含 tag_name
+            if echo "$RESPONSE" | jq -e '.tag_name' > /dev/null 2>&1; then
+              # 提取版本号
+              LATEST_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name')
+              
+              # 检查版本号是否为空
+              if [ -n "$LATEST_VERSION" ] && [ "$LATEST_VERSION" != "null" ]; then
+                echo "Latest Tailscale version: $LATEST_VERSION"
+                echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+                exit 0  # 成功获取版本号，退出脚本
+              else
+                echo "Error: Latest Tailscale version is null or empty!"
+              fi
+            else
+              echo "Error: Failed to fetch latest Tailscale version from GitHub API!"
+            fi
+
+            # 如果未达到最大重试次数，等待后重试
+            if [ $i -lt $MAX_RETRIES ]; then
+              echo "Retrying in $RETRY_DELAY seconds..."
+              sleep $RETRY_DELAY
+            fi
+          done
+
+          # 如果重试 3 次后仍然失败，退出并报错
+          echo "Error: Failed to fetch latest Tailscale version after $MAX_RETRIES attempts!"
+          exit 1
 
       # 获取当前项目的 Releases 版本号
       - name: Get current project release version
@@ -116,7 +149,7 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./dist/tailscale
-          asset_name: tailscale  # 保留原始文件名
+          asset_name: tailscale
           asset_content_type: application/octet-stream
 
       - name: Upload Release Assets (tailscaled)
@@ -127,7 +160,7 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./dist/tailscaled
-          asset_name: tailscaled  # 保留原始文件名
+          asset_name: tailscaled
           asset_content_type: application/octet-stream
 
       # 发送 Telegram 通知
