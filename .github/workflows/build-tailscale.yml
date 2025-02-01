@@ -80,7 +80,7 @@ jobs:
           cp $HOME/go/bin/tailscale $HOME/go/bin/tailscaled dist/
       - name: Upload artifacts
         if: steps.compare_versions.outputs.should_build == 'true'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # 使用 v4 版本
         with:
           name: tailscale-binaries-macos-arm
           path: dist/
