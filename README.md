@@ -23,6 +23,8 @@
 ```bash
 chmod +x /usr/local/bin/tailscale
 chmod +x /usr/local/bin/tailscaled
+xattr -r -d com.apple.quarantine /usr/local/bin/tailscale
+xattr -r -d com.apple.quarantine /usr/local/bin/tailscald
 ```
 
 ### 3. 下载并放置 plist 文件
