@@ -25,7 +25,7 @@ jobs:
             LATEST_VERSION="0.0.0"  # 默认值，表示没有新版本
           fi
           echo "Latest Tailscale version: $LATEST_VERSION"
-          echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT  # 使用环境文件
       # 获取当前项目的 Releases 版本号
       - name: Get current project release version
         id: get_current_version
@@ -37,7 +37,7 @@ jobs:
             CURRENT_VERSION="0.0.0"  # 如果没有 Releases，默认使用 0.0.0
           fi
           echo "Current project release version: $CURRENT_VERSION"
-          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT  # 使用环境文件
       # 比较版本号，决定是否需要构建
       - name: Compare versions
         id: compare_versions
@@ -53,10 +53,10 @@ jobs:
           HIGHER_VERSION=$(echo -e "$LATEST_VERSION_NUM\n$CURRENT_VERSION_NUM" | sort -V | tail -n 1)
           if [[ "$HIGHER_VERSION" == "$LATEST_VERSION_NUM" && "$LATEST_VERSION_NUM" != "$CURRENT_VERSION_NUM" ]]; then
             echo "New version available, continuing..."
-            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "should_build=true" >> $GITHUB_OUTPUT  # 使用环境文件
           else
             echo "No new version available, stopping..."
-            echo "should_build=false" >> $GITHUB_OUTPUT
+            echo "should_build=false" >> $GITHUB_OUTPUT  # 使用环境文件
           fi
       # 如果检测到新版本，继续构建
       - name: Set up Go
