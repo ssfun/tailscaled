@@ -45,8 +45,10 @@ sudo chmod 644 /Library/LaunchDaemons/com.tailscale.tailscaled.plist
 加载 `com.tailscale.tailscaled.plist` 文件：
 
 ```bash
-launchctl unload /Library/LaunchDaemons/com.tailscale.tailscaled.plist
-launchctl load /Library/LaunchDaemons/com.tailscale.tailscaled.plist
+sudo launchctl unload /Library/LaunchDaemons/com.tailscale.tailscaled.plist
+```
+```bash
+sudo launchctl load /Library/LaunchDaemons/com.tailscale.tailscaled.plist
 ```
 
 ### 6. 启动 Tailscale
