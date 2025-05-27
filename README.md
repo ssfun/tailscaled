@@ -76,8 +76,8 @@ tailscale up
 修改完成后，重新加载 plist 文件：
 
 ```bash
-launchctl unload /Library/LaunchDaemons/com.tailscale.tailscaled.plist
-launchctl load /Library/LaunchDaemons/com.tailscale.tailscaled.plist
+sudo launchctl unload /Library/LaunchDaemons/com.tailscale.tailscaled.plist
+sudo launchctl load /Library/LaunchDaemons/com.tailscale.tailscaled.plist
 ```
 
 ## 注意事项
