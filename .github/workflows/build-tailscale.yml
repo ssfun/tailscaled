@@ -1,147 +1,127 @@
 name: Build and Release Tailscale for macOS ARM
+
 on:
-  workflow_dispatch:  # 手动触发
+  workflow_dispatch:
   schedule:
-    - cron: '0 1 * * *'  # Asia/Shanghai 时间10点（UTC 时间1:00）
+    - cron: '0 1 * * *'
+
 jobs:
-  build-and-release:
-    runs-on: macos-latest  # 使用 macOS 环境
+  check-and-build:
+    runs-on: macos-latest
+    permissions:
+      contents: write # 必须：授予创建 Release 的权限
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
-      # 安装 jq
-      - name: Install jq
-        run: |
-          brew install jq
-      # 获取最新 Tailscale 版本号
+        uses: actions/checkout@v4
+
       - name: Get latest Tailscale version
-        id: get_latest_version
+        id: versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/tailscale/tailscale/releases/latest)
-          echo "Tailscale API Response: $RESPONSE" # Log the full response
-          LATEST_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name')
-          if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" == "null" ]; then
-            echo "Warning: Failed to get latest Tailscale version or no releases found. Defaulting to no new version."
-            LATEST_VERSION="0.0.0"  # 默认值，表示没有新版本
-          fi
-          echo "Latest Tailscale version: $LATEST_VERSION"
-          echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT  # 使用环境文件
-      # 获取当前项目的 Releases 版本号
-      - name: Get current project release version
-        id: get_current_version
-        run: |
-          RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/${{ github.repository }}/releases/latest)
-          echo "Current repo API Response: $RESPONSE" # Log the full response
-          CURRENT_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name')
-          if [ -z "$CURRENT_VERSION" ] || [ "$CURRENT_VERSION" == "null" ]; then
-            CURRENT_VERSION="0.0.0"  # 如果没有 Releases，默认使用 0.0.0
-          fi
-          echo "Current project release version: $CURRENT_VERSION"
-          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT  # 使用环境文件
-      # 比较版本号，决定是否需要构建
-      - name: Compare versions
-        id: compare_versions
-        run: |
-          LATEST_VERSION="${{ steps.get_latest_version.outputs.latest_version }}"
-          CURRENT_VERSION="${{ steps.get_current_version.outputs.current_version }}"
-          echo "Latest version from outputs: $LATEST_VERSION"
-          echo "Current version from outputs: $CURRENT_VERSION"
-          # 去掉版本号中的 "v" 前缀
-          LATEST_VERSION_NUM=$(echo "$LATEST_VERSION" | sed 's/^v//')
-          CURRENT_VERSION_NUM=$(echo "$CURRENT_VERSION" | sed 's/^v//')
-          # 使用 sort -V 比较版本号
-          HIGHER_VERSION=$(echo -e "$LATEST_VERSION_NUM\n$CURRENT_VERSION_NUM" | sort -V | tail -n 1)
-          if [[ "$HIGHER_VERSION" == "$LATEST_VERSION_NUM" && "$LATEST_VERSION_NUM" != "$CURRENT_VERSION_NUM" ]]; then
-            echo "New version available, continuing..."
-            echo "should_build=true" >> $GITHUB_OUTPUT  # 使用环境文件
-          else
-            echo "No new version available, stopping..."
-            echo "should_build=false" >> $GITHUB_OUTPUT  # 使用环境文件
-          fi
-      # 如果检测到新版本，继续构建
-      - name: Set up Go
-        if: steps.compare_versions.outputs.should_build == 'true'
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.21'  # 使用 Go 1.21
-      - name: Compile Tailscale for macOS ARM
-        if: steps.compare_versions.outputs.should_build == 'true'
-        run: |
-          LATEST_VERSION=${{ steps.get_latest_version.outputs.latest_version }}
+          # 1. 获取 Tailscale 官方最新版本
+          echo "Fetching upstream version..."
+          LATEST_RESP=$(curl -s -H "Authorization: token $GH_TOKEN" https://api.github.com/repos/tailscale/tailscale/releases/latest)
+          LATEST_VERSION=$(echo "$LATEST_RESP" | jq -r '.tag_name // empty')
+          
           if [ -z "$LATEST_VERSION" ]; then
-            echo "Error: LATEST_VERSION is empty!"
+            echo "Error: Could not fetch upstream version."
             exit 1
           fi
-          echo "Building Tailscale version: $LATEST_VERSION for macOS ARM"
+          echo "Upstream Latest: $LATEST_VERSION"
+
+          # 2. 获取当前仓库最新版本 (容错处理：如果是 404 或无 release，视为 0.0.0)
+          echo "Fetching current repo version..."
+          CURRENT_RESP=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token $GH_TOKEN" https://api.github.com/repos/${{ github.repository }}/releases/latest)
+          
+          if [ "$CURRENT_RESP" == "200" ]; then
+             CURRENT_JSON=$(curl -s -H "Authorization: token $GH_TOKEN" https://api.github.com/repos/${{ github.repository }}/releases/latest)
+             CURRENT_VERSION=$(echo "$CURRENT_JSON" | jq -r '.tag_name')
+          else
+             echo "No release found in current repo (HTTP $CURRENT_RESP). Defaulting to 0.0.0"
+             CURRENT_VERSION="v0.0.0"
+          fi
+          echo "Current Repo Version: $CURRENT_VERSION"
+
+          # 3. 比较版本 (去重 v 前缀)
+          ver_remote=$(echo "$LATEST_VERSION" | sed 's/^v//')
+          ver_local=$(echo "$CURRENT_VERSION" | sed 's/^v//')
+
+          # 使用 sort -V 比较，如果 remote > local，则需要构建
+          if [ "$(echo -e "$ver_local\n$ver_remote" | sort -V | tail -n1)" == "$ver_remote" ] && [ "$ver_local" != "$ver_remote" ]; then
+            echo "New version detected!"
+            echo "build=true" >> $GITHUB_OUTPUT
+            echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "Up to date."
+            echo "build=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Go
+        if: steps.versions.outputs.build == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22' # 建议升级到较新版本
+
+      - name: Compile Tailscale
+        if: steps.versions.outputs.build == 'true'
+        env:
+          TARGET_VERSION: ${{ steps.versions.outputs.version }}
+        run: |
+          echo "Building $TARGET_VERSION..."
           export GOOS=darwin
           export GOARCH=arm64
-          go install tailscale.com/cmd/tailscale{,d}@$LATEST_VERSION
+          # macos-latest 目前通常是 ARM，但显式开启 CGO 更好，如果是在 Intel 上则需注意环境
+          # 对于简单的 tailscale build，通常保持默认即可，或者显式 CGO_ENABLED=0 (纯 Go)
+          # 如果需要 CGO (如 mac 系统集成)，建议不强制设置 CGO_ENABLED=0
+          
+          go install tailscale.com/cmd/tailscale{,d}@$TARGET_VERSION
+          
           mkdir -p dist
-          cp $HOME/go/bin/tailscale $HOME/go/bin/tailscaled dist/
-      - name: Upload artifacts
-        if: steps.compare_versions.outputs.should_build == 'true'
-        uses: actions/upload-artifact@v4  # 使用 v4 版本
+          cp $(go env GOPATH)/bin/tailscale dist/
+          cp $(go env GOPATH)/bin/tailscaled dist/
+          
+          # 验证文件是否存在
+          ls -lh dist/
+
+      - name: Create Release and Upload Assets
+        if: steps.versions.outputs.build == 'true'
+        uses: softprops/action-gh-release@v1
         with:
-          name: tailscale-binaries-macos-arm
-          path: dist/
-      # 创建 GitHub Release
-      - name: Create GitHub Release
-        if: steps.compare_versions.outputs.should_build == 'true'
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 使用自定义的 GH_TOKEN
-        with:
-          tag_name: ${{ steps.get_latest_version.outputs.latest_version }}
-          release_name: ${{ steps.get_latest_version.outputs.latest_version }}
+          tag_name: ${{ steps.versions.outputs.version }}
+          name: ${{ steps.versions.outputs.version }}
           body: |
-            Tailscale binaries built for macOS ARM.
-            Version: ${{ steps.get_latest_version.outputs.latest_version }}
+            Tailscale binaries for macOS ARM (Apple Silicon).
+            Upstream Version: ${{ steps.versions.outputs.version }}
+            Built automatically by GitHub Actions.
           draft: false
           prerelease: false
-      # 上传 Release 附件
-      - name: Upload Release Assets
-        if: steps.compare_versions.outputs.should_build == 'true'
-        uses: actions/upload-release-asset@v1
+          files: |
+            dist/tailscale
+            dist/tailscaled
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 使用自定义的 GH_TOKEN
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./dist/tailscale
-          asset_name: tailscale  # 保留原始文件名
-          asset_content_type: application/octet-stream
-      - name: Upload Release Assets (tailscaled)
-        if: steps.compare_versions.outputs.should_build == 'true'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用自定义的 GH_TOKEN
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./dist/tailscaled
-          asset_name: tailscaled  # 保留原始文件名
-          asset_content_type: application/octet-stream
-      # 发送 Telegram 通知
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Send Telegram notification
-        if: steps.compare_versions.outputs.should_build == 'true'
+        if: steps.versions.outputs.build == 'true'
         run: |
-          MESSAGE="New Tailscale release for macOS ARM! 🚀%0A%0A"
-          MESSAGE+="Version: ${{ steps.get_latest_version.outputs.latest_version }}%0A"
-          MESSAGE+="Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_latest_version.outputs.latest_version }}"
+          MSG="New Tailscale release for macOS ARM! 🚀%0AVersion: ${{ steps.versions.outputs.version }}"
           curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
             -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
-            -d text="$MESSAGE"
-  # 清理旧的运行日志
+            -d text="$MSG"
+
   cleanup-runs:
     runs-on: ubuntu-latest
-    needs: build-and-release  # 确保在 build-and-release 任务完成后执行
+    needs: check-and-build
     permissions:
-      actions: write  # 需要 write 权限来删除运行日志
-      contents: read  # 需要 read 权限来访问仓库信息
+      actions: write
+      contents: read
     steps:
       - name: Delete old workflow runs
         uses: Mattraks/delete-workflow-runs@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }} 
-          repository: ${{ github.repository }}  # 当前仓库
-          retain_days: 7  # 保留最近 7 天的运行日志
-          keep_minimum_runs: 6  # 至少保留 6 条运行日志
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          retain_days: 7
+          keep_minimum_runs: 6
