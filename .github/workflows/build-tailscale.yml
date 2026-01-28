@@ -77,7 +77,7 @@ jobs:
           # 对于简单的 tailscale build，通常保持默认即可，或者显式 CGO_ENABLED=0 (纯 Go)
           # 如果需要 CGO (如 mac 系统集成)，建议不强制设置 CGO_ENABLED=0
           
-          go install tailscale.com/cmd/tailscale{,d}@$TARGET_VERSION
+          go install -ldflags "-s -w" tailscale.com/cmd/tailscale{,d}@$TARGET_VERSION
           
           mkdir -p dist
           cp $(go env GOPATH)/bin/tailscale dist/
