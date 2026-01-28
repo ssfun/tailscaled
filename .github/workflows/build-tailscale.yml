@@ -63,6 +63,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.22' # 建议升级到较新版本
+          cache: false
 
       - name: Compile Tailscale
         if: steps.versions.outputs.build == 'true'
