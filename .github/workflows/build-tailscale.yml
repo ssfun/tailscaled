@@ -17,7 +17,7 @@ jobs:
       - name: Get latest Tailscale version
         id: get_latest_version
         run: |
-          RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GH_TOKEN }}" https://api.github.com/repos/tailscale/tailscale/releases/latest)
+          RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/tailscale/tailscale/releases/latest)
           echo "Tailscale API Response: $RESPONSE" # Log the full response
           LATEST_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name')
           if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" == "null" ]; then
@@ -30,7 +30,7 @@ jobs:
       - name: Get current project release version
         id: get_current_version
         run: |
-          RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GH_TOKEN }}" https://api.github.com/repos/${{ github.repository }}/releases/latest)
+          RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/${{ github.repository }}/releases/latest)
           echo "Current repo API Response: $RESPONSE" # Log the full response
           CURRENT_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name')
           if [ -z "$CURRENT_VERSION" ] || [ "$CURRENT_VERSION" == "null" ]; then
@@ -90,7 +90,7 @@ jobs:
         id: create_release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用自定义的 GH_TOKEN
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 使用自定义的 GH_TOKEN
         with:
           tag_name: ${{ steps.get_latest_version.outputs.latest_version }}
           release_name: ${{ steps.get_latest_version.outputs.latest_version }}
@@ -104,7 +104,7 @@ jobs:
         if: steps.compare_versions.outputs.should_build == 'true'
         uses: actions/upload-release-asset@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用自定义的 GH_TOKEN
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 使用自定义的 GH_TOKEN
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./dist/tailscale
@@ -141,7 +141,7 @@ jobs:
       - name: Delete old workflow runs
         uses: Mattraks/delete-workflow-runs@v2
         with:
-          token: ${{ secrets.GH_TOKEN }}  # 使用自定义的 GH_TOKEN
+          token: ${{ secrets.GITHUB_TOKEN }} 
           repository: ${{ github.repository }}  # 当前仓库
           retain_days: 7  # 保留最近 7 天的运行日志
           keep_minimum_runs: 6  # 至少保留 6 条运行日志
